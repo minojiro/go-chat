@@ -1,6 +1,7 @@
 <template>
   <div class="Room" v-if="room">
     <h1 class="title is-1">{{room.name}}</h1>
+    <p class=""><router-link to="/">back</router-link></p>
 
     <div class="chat" v-if="isJoined">
       <form @submit.prevent="createMessage">
@@ -37,6 +38,7 @@
 
 <script>
 import moment from 'moment'
+import axios from 'axios'
 
 export default {
   name: 'Room',
@@ -51,11 +53,7 @@ export default {
       newMessageBody: '',
       nickname: '',
       isJoined: false,
-      room: {
-        id: 1,
-        created_at: 'Mon Mar 02 2020 14:23:46 GMT+0900',
-        name: 'hogehogehogehogehogehoge',
-      },
+      room: {},
       messages: [
         {
           id: 1,
@@ -84,6 +82,11 @@ export default {
       console.log(this.nickname)
       this.isJoined = true
     },
+  },
+  async mounted() {
+    const res = await axios.get('http://localhost:8081/api/rooms')
+    const roomId = Number(this.roomId)
+    this.room = res.data.find(o => o.id === roomId)
   },
 }
 </script>
