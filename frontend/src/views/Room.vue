@@ -1,15 +1,14 @@
 <template>
   <div class="Room" v-if="room">
-    <h1 class="title is-1">{{room.name}}</h1>
-    <p class=""><router-link to="/">back</router-link></p>
-
-    <div class="chat" v-if="isJoined">
+    <div class="chat" v-if="connection">
       <form @submit.prevent="createMessage">
         <div class="columns is-mobile">
-          <div class="column is-four-fifths"><input placeholder="message" class="input" type="text" v-model="newMessageBody"></div>
+          <div class="column is-four-fifths"><input :placeholder="`${nickname} says...`" class="input" type="text" v-model="newMessageBody"></div>
           <div class="column is-one-fifth"><button class="button is-primary is-fullwidth" :disabled="!newMessageBody">send</button></div>
         </div>
       </form>
+
+      <br>
 
       <table class="table is-fullwidth">
         <tr v-for="message in messages" :key="message.id">
@@ -17,7 +16,7 @@
             <div class="columns is-vcentered">
               <p class="column is-one-fifth">{{message.createdBy}}</p>
               <p class="column is-three-fifths">{{message.body}}</p>
-              <p class="column has-text-right has-text-grey-light is-size-7">{{message.created_at | datetime}}</p>
+              <p class="column has-text-right has-text-grey-light is-size-7">{{message.createdAt | datetime}}</p>
             </div>
           </td>
         </tr>
@@ -25,7 +24,7 @@
     </div>
 
     <div class="join" v-else>
-      <h2 class="title is-2">Type your nickname and join!</h2>
+      <h2 class="title is-2">Type your nickname and join to {{room.name}}!</h2>
       <form @submit.prevent="join">
         <div class="columns is-mobile">
           <div class="column is-four-fifths"><input placeholder="nickname" class="input" type="text" v-model="nickname"></div>
@@ -33,18 +32,22 @@
         </div>
       </form>
     </div>
+    <br>
+    <br>
+    <p><router-link to="/">back</router-link></p>
   </div>
 </template>
 
 <script>
 import moment from 'moment'
 import axios from 'axios'
+import SocketIO from 'socket.io-client'
 
 export default {
   name: 'Room',
   filters: {
     datetime(s) {
-      const m = new moment(s)
+      const m = moment(s)
       return m.format('HH:mm:ss')
     },
   },
@@ -52,22 +55,9 @@ export default {
     return {
       newMessageBody: '',
       nickname: '',
-      isJoined: false,
       room: {},
-      messages: [
-        {
-          id: 1,
-          body: 'hello',
-          createdBy: 'taro',
-          created_at: 'Mon Mar 02 2020 14:23:46 GMT+0900',
-        },
-        {
-          id: 2,
-          body: 'hello',
-          createdBy: 'jiro',
-          created_at: 'Mon Mar 02 2020 14:23:46 GMT+0900',
-        },
-      ],
+      connection: null,
+      messages: [],
     }
   },
   props: {
@@ -75,18 +65,47 @@ export default {
   },
   methods: {
     createMessage() {
-      console.log(this.newMessageBody)
+      const payload = {
+        dataType: 'message',
+        roomId: ~~this.roomId,
+        messageData: {
+          body: this.newMessageBody,
+        },
+      }
+      this.connection.send(JSON.stringify(payload))
       this.newMessageBody = ''
     },
     join() {
-      console.log(this.nickname)
-      this.isJoined = true
+      const connection = new WebSocket('ws://localhost:8081/api/socket')
+      connection.onopen = (e) => {
+        const payload = {
+          dataType: 'join',
+          roomId: ~~this.roomId,
+          joinData: {
+            nickname: this.nickname,
+          },
+        }
+        connection.send(JSON.stringify(payload))
+        connection.onmessage = this.recieveMessage
+        this.connection = connection
+      }
+    },
+    recieveMessage(e) {
+      const message = JSON.parse(e.data)
+      this.messages = [...this.messages, message].sort((a,b) => a.createdAt < b.createdAt ? 1 : -1).slice(0, 20)
+    },
+    async initialize() {
+      const res = await axios.get('http://localhost:8081/api/rooms')
+      this.room = res.data[~~this.roomId]
     },
   },
   async mounted() {
-    const res = await axios.get('http://localhost:8081/api/rooms')
-    const roomId = Number(this.roomId)
-    this.room = res.data.find(o => o.id === roomId)
+    this.initialize()
+  },
+  beforeDestroy() {
+    if (this.connection) {
+      this.connection.close()
+    }
   },
 }
 </script>
